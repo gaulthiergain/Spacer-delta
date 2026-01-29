@@ -4,9 +4,9 @@
 
 This tool is particularly useful in unikernel-based cloud environments where fine-grained memory sharing and performance isolation are critical.
 
-This project is a **prototype** and is still under active development. It is not yet production-ready.
+This project is a **prototype** and is still under active development.
 
- 📌 Examples and usage guides are coming soon.
+Spacer-Δ relies on Spacer-SLT for some of the experiments (load time deduplication), please refer to the following repository to install and setup Spacer-SLT: https://github.com/gaulthiergain/Spacer-SLT
 
 #### Features:
 - Generates delta object files by comparing ELF sections and symbols across versions
