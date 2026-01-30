@@ -1,0 +1,148 @@
+{
+ "common_to_all": [
+  {
+   "addr": "2f3000",
+   "name": ".ind.applambda",
+   "occurence": 5
+  },
+  {
+   "addr": "2800000",
+   "name": ".intrstack",
+   "occurence": 5
+  },
+  {
+   "addr": "10d000",
+   "name": ".tbss",
+   "occurence": 5
+  },
+  {
+   "addr": "100000",
+   "name": ".text",
+   "occurence": 5
+  },
+  {
+   "addr": "2f4000",
+   "name": ".text.rodata.applambda",
+   "occurence": 5
+  },
+  {
+   "addr": "10e000",
+   "name": ".text.rodata.common",
+   "occurence": 5
+  },
+  {
+   "addr": "2f9000",
+   "name": ".text.rodata.lib-lambda-v1",
+   "occurence": 5
+  },
+  {
+   "addr": "10b000",
+   "name": ".uk_ctortab",
+   "occurence": 5
+  },
+  {
+   "addr": "10b078",
+   "name": ".uk_eventtab",
+   "occurence": 5
+  },
+  {
+   "addr": "10b0a8",
+   "name": ".uk_fs_list",
+   "occurence": 5
+  },
+  {
+   "addr": "10b048",
+   "name": ".uk_inittab",
+   "occurence": 5
+  },
+  {
+   "addr": "10a0c8",
+   "name": ".uk_lib_arg__lib_param",
+   "occurence": 5
+  },
+  {
+   "addr": "10a000",
+   "name": ".uk_thread_inittab",
+   "occurence": 5
+  },
+  {
+   "addr": "3000000",
+   "name": "initrd",
+   "occurence": 5
+  },
+  {
+   "addr": "10a020",
+   "name": "netdev__param_arg",
+   "occurence": 5
+  },
+  {
+   "addr": "10a068",
+   "name": "vfs__param_arg",
+   "occurence": 5
+  }
+ ],
+ "common_to_subset": [
+  {
+   "addr": "6eb000",
+   "name": ".ind.lib-lambda-v2",
+   "occurence": 4
+  },
+  {
+   "addr": "adf000",
+   "name": ".ind.lib-lambda-v3",
+   "occurence": 3
+  },
+  {
+   "addr": "ed3000",
+   "name": ".ind.lib-lambda-v4",
+   "occurence": 2
+  },
+  {
+   "addr": "6ed000",
+   "name": ".text.rodata.lib-lambda-v2",
+   "occurence": 4
+  },
+  {
+   "addr": "ae1000",
+   "name": ".text.rodata.lib-lambda-v3",
+   "occurence": 3
+  },
+  {
+   "addr": "ed5000",
+   "name": ".text.rodata.lib-lambda-v4",
+   "occurence": 2
+  }
+ ],
+ "not_common": [
+  {
+   "addr": "1ebc000",
+   "name": ".bss",
+   "occurence": 5
+  },
+  {
+   "addr": "16bb000",
+   "name": ".data",
+   "occurence": 5
+  },
+  {
+   "addr": "2f7000",
+   "name": ".ind.lib-lambda-v1",
+   "occurence": 5
+  },
+  {
+   "addr": "12c7000",
+   "name": ".ind.lib-lambda-v5",
+   "occurence": 1
+  },
+  {
+   "addr": "10c000",
+   "name": ".init_array",
+   "occurence": 5
+  },
+  {
+   "addr": "12c9000",
+   "name": ".text.rodata.lib-lambda-v5",
+   "occurence": 1
+  }
+ ]
+}

@@ -1,0 +1,11 @@
+$(eval $(call addlib,applambda))
+
+APPLAMBDA_SRCS-y += $(APPLAMBDA_BASE)/main.c
+APPLAMBDA_SRCS-y += $(APPLAMBDA_BASE)/main_lambda.c
+
+APPLAMBDA_FLAGS =
+APPLAMBDA_FLAGS_SUPPRESS = -Wno-unused-parameter -Wno-unused-variable	\
+-Wno-unused-but-set-variable -Wno-unused-value
+
+APPLAMBDA_CFLAGS-y +=  $(APPLAMBDA_FLAGS)
+APPLAMBDA_CFLAGS-y +=  $(APPLAMBDA_FLAGS_SUPPRESS)

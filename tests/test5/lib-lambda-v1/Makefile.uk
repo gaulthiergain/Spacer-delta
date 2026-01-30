@@ -1,0 +1,15 @@
+# Register your lib to Unikraft's build system
+$(eval $(call addlib_s,liblambda,$(CONFIG_LIBLAMBDA)))
+
+# Add library source code to compilation
+LIBLAMBDA_SRCS-y += $(LIBLAMBDA_BASE)/lambda.c
+
+# Extend the global include paths with library's folder
+CINCLUDES-y += -I$(LIBLAMBDA_BASE)/include
+
+LIBLAMBDA_FLAGS = -fdata-sections -ffunction-sections -fmerge-all-constants -fmerge-constants
+LIBLAMBDA_FLAGS_SUPPRESS = -Wno-unused-parameter -Wno-unused-variable	\
+-Wno-unused-but-set-variable -Wno-unused-value
+
+LIBLAMBDA_CFLAGS-y +=  $(LIBLAMBDA_FLAGS)
+LIBLAMBDA_CFLAGS-y +=  $(LIBLAMBDA_FLAGS_SUPPRESS)

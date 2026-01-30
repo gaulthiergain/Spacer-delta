@@ -1,0 +1,3 @@
+config LIBLAMBDA
+    bool "liblambda"
+    default n

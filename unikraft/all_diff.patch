@@ -1,0 +1,897 @@
+diff --git a/Makefile b/Makefile
+index e9f40449..b7024043 100644
+--- a/Makefile
++++ b/Makefile
+@@ -321,7 +321,7 @@ CXXFLAGS :=
+ CXXFLAGS-y :=
+ CXXINCLUDES :=
+ CXXINCLUDES-y :=
+-GOCFLAGS :=
++GOCFLAGS :=
+ GOCFLAGS-y :=
+ RUSTCFLAGS :=
+ RUSTCFLAGS-y :=
+diff --git a/lib/Makefile.uk b/lib/Makefile.uk
+index 85e5b0a0..b672125f 100644
+--- a/lib/Makefile.uk
++++ b/lib/Makefile.uk
+@@ -32,6 +32,7 @@ $(eval $(call _import_lib,$(CONFIG_UK_BASE)/lib/ukfallocbuddy))
+ $(eval $(call _import_lib,$(CONFIG_UK_BASE)/lib/uklibparam))
+ $(eval $(call _import_lib,$(CONFIG_UK_BASE)/lib/uklock))
+ $(eval $(call _import_lib,$(CONFIG_UK_BASE)/lib/ukmmap))
++$(eval $(call _import_lib,$(CONFIG_UK_BASE)/lib/ukmmio))
+ $(eval $(call _import_lib,$(CONFIG_UK_BASE)/lib/ukmpi))
+ $(eval $(call _import_lib,$(CONFIG_UK_BASE)/lib/uknetdev))
+ $(eval $(call _import_lib,$(CONFIG_UK_BASE)/lib/ukring))
+@@ -46,4 +47,3 @@ $(eval $(call _import_lib,$(CONFIG_UK_BASE)/lib/uktime))
+ $(eval $(call _import_lib,$(CONFIG_UK_BASE)/lib/uktimeconv))
+ $(eval $(call _import_lib,$(CONFIG_UK_BASE)/lib/vfscore))
+ $(eval $(call _import_lib,$(CONFIG_UK_BASE)/lib/ukrust))
+-$(eval $(call _import_lib,$(CONFIG_UK_BASE)/lib/ukmmio))
+diff --git a/lib/ukboot/boot.c b/lib/ukboot/boot.c
+index f62e2141..6f51e0a9 100644
+--- a/lib/ukboot/boot.c
++++ b/lib/ukboot/boot.c
+@@ -75,6 +75,15 @@
+ #endif
+ #include "banner.h"
+
++//#define CONFIG_SNAPSHOT 1
++#ifdef CONFIG_SNAPSHOT
++#include <time.h>
++#endif
++
++static inline void writel(uint32_t *addr, uint8_t v)
++{
++	__asm__ __volatile__("mov %0, %1" : : "r"(v), "m"(*addr));
++}
+ int main(int argc, char *argv[]) __weak;
+
+ static void main_thread_func(void *arg) __noreturn;
+@@ -154,6 +163,16 @@ static void main_thread_func(void *arg)
+ 	}
+ 	uk_pr_info("])\n");
+
++/*#ifdef CONFIG_SNAPSHOT
++	struct timespec ts;
++
++	ts.tv_sec = 500 / 1000;
++	ts.tv_nsec = (500 % 1000) * 1000000;
++	do
++		ret = nanosleep(&ts, &ts);
++	while (ret && errno == EINTR);
++#endif*/
++	writel((uint32_t*)0xd0000000, 123);
+ 	ret = main(tma->argc, tma->argv);
+ 	uk_pr_info("main returned %d, halting system\n", ret);
+ 	ret = (ret != 0) ? UKPLAT_CRASH : UKPLAT_HALT;
+@@ -276,16 +295,11 @@ void ukplat_entry(int argc, char *argv[])
+
+ #if CONFIG_LIBUKMMIO
+ 	uk_pr_info("Searching for MMIO devices\n");
+-	char str[36] = "virtio_mmio.device=4096@0xd0000000:5";
+-	// char str2[36] = "virtio_mmio.device=4096@0xd0001000:6";
+-	// uk_mmio_add_dev(str);
+-	uk_mmio_add_dev(str);
+-
+-	//for (int i = 1; i < argc; i++) {
+-	//	if (!strncmp(argv[i], "virtio_mmio.device=", 19)) {
+-	//		uk_mmio_add_dev(argv[i]);
+-//		}
+-//	}
++ 	for (int i = 1; i < argc; i++) {
++ 		if (!strncmp(argv[i], "virtio_mmio.device=", 19)) {
++ 			uk_mmio_add_dev(argv[i]);
++ 		}
++ 	}
+ #endif
+
+ #if CONFIG_LIBUKSCHED
+diff --git a/lib/uklibparam/include/uk/libparam.h b/lib/uklibparam/include/uk/libparam.h
+index 0bf9fc32..4cfb9bb5 100644
+--- a/lib/uklibparam/include/uk/libparam.h
++++ b/lib/uklibparam/include/uk/libparam.h
+@@ -85,7 +85,6 @@ extern C {
+  */
+ #define _LIB_PARAM_SECTION_NAME(libname, section_name)		\
+ 				__STRINGCONCAT(libname, section_name)
+-
+ /**
+  * Macros to denote the start / stop of a section.
+  */
+diff --git a/lib/uklibparam/libparam.lds.S b/lib/uklibparam/libparam.lds.S
+index bec69789..e72655b4 100644
+--- a/lib/uklibparam/libparam.lds.S
++++ b/lib/uklibparam/libparam.lds.S
+@@ -28,5 +28,6 @@ SECTIONS
+ 			      SIZEOF(
+ 				create_var(UK_LIBPARAM_PREFIX,__param_arg));
+ }
+-INSERT AFTER .rodata
++
++INSERT BEFORE .rodata
+ #endif /* UK_LIBPARAM_PREFIX */
+diff --git a/lib/ukmmio/include/uk/mmio.h b/lib/ukmmio/include/uk/mmio.h
+index 517ff1fc..bb5e4581 100644
+--- a/lib/ukmmio/include/uk/mmio.h
++++ b/lib/ukmmio/include/uk/mmio.h
+@@ -9,7 +9,7 @@ extern "C" {
+ #endif
+
+ struct uk_mmio_device {
+-	int id;
++	unsigned int id;
+ 	UK_TAILQ_ENTRY(struct uk_mmio_device) _list;
+
+ 	__u64 size;
+@@ -55,4 +55,4 @@ int uk_mmio_add_dev(char *device);
+ }
+ #endif
+
+-#endif /* __UK_MMIODEV__ */
++#endif /* __UK_MMIODEV__ */
+\ No newline at end of file
+diff --git a/lib/ukmmio/mmio.c b/lib/ukmmio/mmio.c
+index d30f36be..4fdc77c7 100644
+--- a/lib/ukmmio/mmio.c
++++ b/lib/ukmmio/mmio.c
+@@ -31,14 +31,20 @@ struct uk_mmio_device * uk_mmio_dev_get(unsigned int id)
+
+ __u64 get_token_until(char *str, char c, int base, char **pEnd)
+ {
++	__u64 multiplier = 1;
+ 	char *p;
+
+-	for (p = str; *p && *p != c; p++);
++	for (p = str; *p && *p != c; p++) {
++		if (*p == 'K') {
++			multiplier = 1024;
++			*p = ' ';
++		}
++	}
+ 	if (*p) {
+ 		*p = ' ';
+ 	}
+
+-	return strtol(str, pEnd, base);
++	return strtol(str, pEnd, base) * multiplier;
+ }
+
+ int uk_mmio_add_dev(char *device)
+@@ -60,7 +66,7 @@ int uk_mmio_add_dev(char *device)
+ 	}
+
+ 	strcpy(devStr, device + sizeof(virtio_mmio_identifier) - 1);
+-
++
+ 	size = get_token_until(devStr, '@', 0, &pEnd);
+ 	if (!size) {
+ 		uk_pr_err("Couldn't parse mmio device size\n");
+@@ -95,6 +101,6 @@ int uk_mmio_add_dev(char *device)
+ 	dev->dev_id = plat_dev_id;
+ 	UK_TAILQ_INSERT_TAIL(&uk_mmio_device_list, dev, _list);
+
+-	uk_pr_info("New mmio device at %#x of size %#x and irq %u\n", base_addr, size, irq);
++	uk_pr_info("New mmio device at %#lx of size %#lx and irq %lu\n", base_addr, size, irq);
+ 	return 0;
+-}
++}
+\ No newline at end of file
+diff --git a/lib/uknetdev/include/uk/netbuf.h b/lib/uknetdev/include/uk/netbuf.h
+index 048f160b..fec76e94 100644
+--- a/lib/uknetdev/include/uk/netbuf.h
++++ b/lib/uknetdev/include/uk/netbuf.h
+@@ -123,6 +123,12 @@ typedef void (*uk_netbuf_dtor_t)(struct uk_netbuf *);
+ #define UK_NETBUF_F_PARTIAL_CSUM_BIT 1
+ #define UK_NETBUF_F_PARTIAL_CSUM     (1 << UK_NETBUF_F_PARTIAL_CSUM_BIT)
+
++/*Indicates the packet should be sent with the help of TCP Segmentation
++* Offloading. This requires that the device supports this.
++*/
++#define UK_NETBUF_F_GSO_TCPV4_BIT    2
++#define UK_NETBUF_F_GSO_TCPV4        (1 << UK_NETBUF_F_GSO_TCPV4_BIT)
++
+ struct uk_netbuf {
+ 	struct uk_netbuf *next;
+ 	struct uk_netbuf *prev;
+@@ -147,6 +153,14 @@ struct uk_netbuf {
+ 				 * pointing to the checksum field
+ 				 */
+
++	uint16_t header_len;   /**< Used if UK_NETBUF_F_GSO_* is set;
++							* Number of bytes to copy into each split
++							* packet as a header
++							*/
++ 	uint16_t gso_size;     /**< Used if UK_NETBUF_F_GSO_* is set;
++							* Maximum size of each packet beyond the header
++							*/
++
+ 	uk_netbuf_dtor_t dtor; /**< Destructor callback */
+ 	struct uk_alloc *_a;   /**< @internal Allocator for free'ing */
+ 	void *_b;              /**< @internal Base address for free'ing */
+diff --git a/lib/uknetdev/include/uk/netdev_core.h b/lib/uknetdev/include/uk/netdev_core.h
+index 73d9d089..220379a3 100644
+--- a/lib/uknetdev/include/uk/netdev_core.h
++++ b/lib/uknetdev/include/uk/netdev_core.h
+@@ -138,13 +138,19 @@ struct uk_hwaddr {
+ #define UK_NETDEV_F_PARTIAL_CSUM_BIT	2
+ #define UK_NETDEV_F_PARTIAL_CSUM	(1UL << UK_NETDEV_F_PARTIAL_CSUM_BIT)
+
++/* Indicates that the network device supports sending netbufs with the
++* UK_NETBUF_F_GSO_TCPV4 bit set. */
++#define UK_NETDEV_F_TSO4_BIT		3
++#define UK_NETDEV_F_TSO4		(1UL << UK_NETDEV_F_TSO4_BIT)
++
+ #define uk_netdev_rxintr_supported(feature)	\
+ 	(feature & (UK_NETDEV_F_RXQ_INTR))
+ #define uk_netdev_txintr_supported(feature)	\
+ 	(feature & (UK_NETDEV_F_TXQ_INTR))
+ #define uk_netdev_partial_csum_supported(feature)	\
+ 	(feature & (UK_NETDEV_F_PARTIAL_CSUM))
+-
++#define uk_netdev_tso4_supported(feature) \
++ 	(feature & (UK_NETDEV_F_TSO4))
+ /**
+  * A structure used to describe network device capabilities.
+  */
+diff --git a/lib/uksched/extra.ld b/lib/uksched/extra.ld
+index 21736bb5..5c5bc2cb 100644
+--- a/lib/uksched/extra.ld
++++ b/lib/uksched/extra.ld
+@@ -1,6 +1,7 @@
+ SECTIONS
+ {
+-	.uk_thread_inittab : {
++	. = ALIGN(0x1000);
++	.uk_thread_inittab : /*ALIGN(0x100)*/ {
+ 		PROVIDE(_uk_thread_inittab_start = .);
+ 		KEEP (*(.uk_thread_inittab0))
+ 		KEEP (*(.uk_thread_inittab0.*))
+@@ -24,5 +25,8 @@ SECTIONS
+ 		KEEP (*(.uk_thread_inittab9.*))
+ 		PROVIDE(_uk_thread_inittab_end = .);
+ 	}
++	netdev__param_arg :{ *(netdev__param_arg)}
++	vfs__param_arg :{ *(vfs__param_arg)}
++	.uk_lib_arg__lib_param :{ *(uk_lib_arg__lib_param)}
+ }
+-INSERT AFTER .text;
++INSERT AFTER .text;
+\ No newline at end of file
+diff --git a/lib/uksignal/exportsyms.uk b/lib/uksignal/exportsyms.uk
+index 0fc0211c..251f6dac 100644
+--- a/lib/uksignal/exportsyms.uk
++++ b/lib/uksignal/exportsyms.uk
+@@ -17,6 +17,7 @@ kill
+ killpg
+ raise
+ siginterrupt
++sigaltstack
+
+ # sigset.h
+ sigemptyset
+diff --git a/lib/uksignal/include/uk/uk_signal.h b/lib/uksignal/include/uk/uk_signal.h
+index 2748f6f2..84114594 100644
+--- a/lib/uksignal/include/uk/uk_signal.h
++++ b/lib/uksignal/include/uk/uk_signal.h
+@@ -138,13 +138,14 @@ static inline void uk_remove_proc_signal(int sig)
+ 	uk_sigdelset(&uk_proc_sig.pending, sig);
+ }
+
++int sigaltstack(const stack_t *ss, stack_t *old_ss);
++
+ /* maybe move to sched */
+ struct uk_thread_sig *uk_crr_thread_sig_container(void);
+ void uk_sig_init_siginfo(siginfo_t *siginfo, int sig);
+
+ /* returns the uk_signal for sig if it is pending on thread */
+-struct uk_signal *
+-uk_sig_th_get_pending(struct uk_thread_sig *th_sig, int sig);
++struct uk_signal *uk_sig_th_get_pending(struct uk_thread_sig *th_sig, int sig);
+
+ /* returns the siginfo for sig if it is pending on proc */
+ siginfo_t *uk_sig_proc_get_pending(int sig);
+@@ -153,8 +154,8 @@ siginfo_t *uk_sig_proc_get_pending(int sig);
+  * returns the uk_signal for a signal from the given
+  * set if it is pending on thread
+  */
+-struct uk_signal *
+-uk_sig_th_get_pending_any(struct uk_thread_sig *th_sig, sigset_t set);
++struct uk_signal *uk_sig_th_get_pending_any(struct uk_thread_sig *th_sig,
++					    sigset_t set);
+
+ /*
+  * returns the siginfo for a signal from the given
+@@ -162,8 +163,7 @@ uk_sig_th_get_pending_any(struct uk_thread_sig *th_sig, sigset_t set);
+  */
+ siginfo_t *uk_sig_proc_get_pending_any(sigset_t set);
+
+-int
+-uk_deliver_proc_signal(struct uk_thread_sig *th_sig, siginfo_t *sig);
++int uk_deliver_proc_signal(struct uk_thread_sig *th_sig, siginfo_t *sig);
+ void uk_execute_handler(siginfo_t sig);
+
+ #ifdef __cplusplus
+diff --git a/lib/uksignal/signal.c b/lib/uksignal/signal.c
+index a215d7e8..a2af1bd6 100644
+--- a/lib/uksignal/signal.c
++++ b/lib/uksignal/signal.c
+@@ -2,35 +2,37 @@
+  * Copyright (C) 2013 Cloudius Systems, Ltd.
+  *
+  * Parts are copyright by other contributors. Please refer to copyright notices
+- * in the individual source files, and to the git commit log, for a more accurate
+- * list of copyright holders.
++ * in the individual source files, and to the git commit log, for a more
++ * accurate list of copyright holders.
+  *
+  * OSv is open-source software, distributed under the 3-clause BSD license:
+  *
+  *     Redistribution and use in source and binary forms, with or without
+- *     modification, are permitted provided that the following conditions are met:
++ *     modification, are permitted provided that the following conditions are
++ * met:
+  *
+  *     * Redistributions of source code must retain the above copyright notice,
+  *       this list of conditions and the following disclaimer.
+  *
+- *     * Redistributions in binary form must reproduce the above copyright notice,
+- *       this list of conditions and the following disclaimer in the documentation
+- *       and/or other materials provided with the distribution.
++ *     * Redistributions in binary form must reproduce the above copyright
++ * notice, this list of conditions and the following disclaimer in the
++ * documentation and/or other materials provided with the distribution.
+  *
+  *     * Neither the name of the Cloudius Systems, Ltd. nor the names of its
+- *       contributors may be used to endorse or promote products derived from this
+- *       software without specific prior written permission.
++ *       contributors may be used to endorse or promote products derived from
++ * this software without specific prior written permission.
+  *
+- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+- *     AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+- *     IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+- *     FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+- *     DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+- *     SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+- *     CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+- *     OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+- *     OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
++ * IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ *     IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
++ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
++ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
++ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
++ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
++ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
++ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
++ * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+  */
+ /* adapted from OSv */
+
+@@ -89,16 +91,14 @@ static int uk_get_awaited_signal(void)
+ }
+
+ /* TODO: We do not support any sa_flags besides SA_SIGINFO */
+-int
+-sigaction(int signum, const struct sigaction *act, struct sigaction *oldact)
++int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact)
+ {
+ 	struct uk_list_head *i;
+ 	struct uk_thread_sig *th_sig;
+ 	struct uk_signal *signal;
+
+-	if (!uk_sig_is_valid(signum) ||
+-			signum == SIGKILL ||
+-			signum == SIGSTOP) {
++	if (!uk_sig_is_valid(signum) || signum == SIGKILL
++	    || signum == SIGSTOP) {
+ 		errno = EINVAL;
+ 		return -1;
+ 	}
+@@ -118,7 +118,8 @@ sigaction(int signum, const struct sigaction *act, struct sigaction *oldact)
+ 			uk_remove_proc_signal(signum);
+
+ 			/* remove it from threads*/
+-			uk_list_for_each(i, &uk_proc_sig.thread_sig_list) {
++			uk_list_for_each(i, &uk_proc_sig.thread_sig_list)
++			{
+ 				th_sig = uk_list_entry(i, struct uk_thread_sig,
+ 						       list_node);
+
+@@ -144,10 +145,7 @@ sigaction(int signum, const struct sigaction *act, struct sigaction *oldact)
+ static sighandler_t uk_signal(int signum, sighandler_t handler, int sa_flags)
+ {
+ 	struct sigaction old;
+-	struct sigaction act = {
+-		.sa_handler = handler,
+-		.sa_flags = sa_flags
+-	};
++	struct sigaction act = {.sa_handler = handler, .sa_flags = sa_flags};
+
+ 	if (sigaction(signum, &act, &old) < 0)
+ 		return SIG_ERR;
+@@ -326,7 +324,6 @@ int kill(pid_t pid, int sig)
+ 	struct uk_list_head *i;
+ 	struct uk_thread_sig *th_sig;
+
+-
+ 	if (pid != 1 && pid != 0 && pid != -1) {
+ 		errno = ESRCH;
+ 		return -1;
+@@ -340,7 +337,8 @@ int kill(pid_t pid, int sig)
+ 	/* setup siginfo */
+ 	uk_sig_init_siginfo(&siginfo, sig);
+
+-	uk_list_for_each(i, &uk_proc_sig.thread_sig_list) {
++	uk_list_for_each(i, &uk_proc_sig.thread_sig_list)
++	{
+ 		th_sig = uk_list_entry(i, struct uk_thread_sig, list_node);
+
+ 		if (uk_deliver_proc_signal(th_sig, &siginfo) > 0)
+@@ -386,3 +384,10 @@ UK_SYSCALL_R_DEFINE(int, pause)
+ {
+ 	return 0;
+ }
++
++int sigaltstack(const stack_t *ss __unused, stack_t *old_ss __unused)
++{
++	UK_WARN_STUBBED();
++	errno = ENOTSUP;
++	return -1;
++}
+\ No newline at end of file
+diff --git a/plat/common/platform_bus.c b/plat/common/platform_bus.c
+index 5329ba93..d82c429f 100644
+--- a/plat/common/platform_bus.c
++++ b/plat/common/platform_bus.c
+@@ -110,8 +110,9 @@ static inline int pf_driver_add_device(struct pf_driver *drv,
+ 	uk_pr_debug("pf_driver_add_device devid=%d\n", dev->id.device_id);
+
+ 	ret = drv->add_dev(dev);
+-	if (ret < 0 && ret != -ENODEV)
++	/*if (ret < 0 && ret != -ENODEV)
+ 		uk_pr_err("Platform Failed to initialize device driver, ret(%d)\n", ret);
++	*/
+
+ 	return ret;
+ }
+diff --git a/plat/drivers/include/virtio/virtio_config.h b/plat/drivers/include/virtio/virtio_config.h
+index a41f97be..791bea8e 100644
+--- a/plat/drivers/include/virtio/virtio_config.h
++++ b/plat/drivers/include/virtio/virtio_config.h
+@@ -139,7 +139,7 @@ static inline void _virtio_mem_cwrite_bytes(const void *addr, const __u8 offset,
+ }
+
+ static inline void _virtio_mem_cread_bytes(const void *addr, const __u8 offset,
+-				       void *buf, int len, int type_len)
++					void *buf, int len, int type_len)
+ {
+ 	int i = 0;
+ 	__u64 io_addr;
+diff --git a/plat/drivers/include/virtio/virtio_net.h b/plat/drivers/include/virtio/virtio_net.h
+index f33fce49..679c5fbd 100644
+--- a/plat/drivers/include/virtio/virtio_net.h
++++ b/plat/drivers/include/virtio/virtio_net.h
+@@ -72,6 +72,7 @@
+ #define VIRTIO_NET_F_CTRL_MAC_ADDR 23	/* Set MAC address */
+
+ #define VIRTIO_NET_F_SPEED_DUPLEX 63	/* Device set linkspeed and duplex */
++#define VIRTIO_NET_F_HASH_REPORT  57	/* Device can provide per-packet hash value */
+
+ #ifndef VIRTIO_NET_NO_LEGACY
+ #define VIRTIO_NET_F_GSO	6	/* Host handles pkts w/ any GSO type */
+diff --git a/plat/drivers/virtio/virtio_bus.c b/plat/drivers/virtio/virtio_bus.c
+index f9aa0ef4..619a7f5b 100644
+--- a/plat/drivers/virtio/virtio_bus.c
++++ b/plat/drivers/virtio/virtio_bus.c
+@@ -110,7 +110,7 @@ static int virtio_device_reinit(struct virtio_dev *vdev)
+ 	}
+ 	/* Acknowledge the virtio device */
+ 	rc = virtio_dev_status_update(vdev, VIRTIO_CONFIG_STATUS_ACK);
+-	if (rc != 0) {
++	if (unlikely(rc) != 0) {
+ 		uk_pr_err("Failed to acknowledge the virtio device %p: %d\n",
+ 			  vdev, rc);
+ 		return rc;
+@@ -118,7 +118,7 @@ static int virtio_device_reinit(struct virtio_dev *vdev)
+
+ 	/* Acknowledge the virtio driver */
+ 	rc = virtio_dev_status_update(vdev, (VIRTIO_CONFIG_STATUS_ACK | VIRTIO_CONFIG_STATUS_DRIVER));
+-	if (rc != 0) {
++	if (unlikely(rc) != 0) {
+ 		uk_pr_err("Failed to acknowledge the virtio driver %p: %d\n",
+ 			  vdev, rc);
+ 		return rc;
+diff --git a/plat/drivers/virtio/virtio_mmio.c b/plat/drivers/virtio/virtio_mmio.c
+index c0002c0e..cb401c9f 100644
+--- a/plat/drivers/virtio/virtio_mmio.c
++++ b/plat/drivers/virtio/virtio_mmio.c
+@@ -141,14 +141,14 @@ static int vm_get(struct virtio_dev *vdev, __u16 offset,
+ 	__u16 w;
+ 	__u32 l;
+
+-	// if (vm_dev->version == 1) {
++	if (vm_dev->version <= 2) {
+ 		__u8 *ptr = buf;
+ 		__u8 i;
+
+ 		for (i = 0; i < len; i++)
+ 			ptr[i] = virtio_mem_cread8(base, offset + i);
+ 		return len;
+-	// }
++	}
+
+ 	switch (len) {
+ 	case 1:
+@@ -166,7 +166,7 @@ static int vm_get(struct virtio_dev *vdev, __u16 offset,
+ 	case 8:
+ 		l = (virtio_mem_cread32(base, offset));
+ 		memcpy(buf, &l, sizeof(l));
+-		l = (virtio_cread32(base, offset + sizeof(l)));
++		l = (virtio_mem_cread32(base, offset + sizeof(l)));
+ 		memcpy(buf + sizeof(l), &l, sizeof(l));
+ 		break;
+ 	default:
+@@ -404,7 +404,7 @@ static struct virtio_config_ops virtio_mmio_config_ops = {
+
+ static int virtio_mmio_probe(struct pf_device *pfdev)
+ {
+-
++	#ifdef CONFIG_LIBUKMMIO
+ 	#ifdef CONFIG_ARCH_ARM_64
+ 	const fdt32_t *prop;
+ 	int type, hwirq, prop_len;
+@@ -456,14 +456,18 @@ static int virtio_mmio_probe(struct pf_device *pfdev)
+ 	uk_pr_info("virtio mmio probe base(0x%lx) irq(%ld)\n",
+ 				pfdev->base, pfdev->irq);
+ 	#endif
++	#endif
+
+ 	return 0;
+
+-
++#ifdef CONFIG_LIBUKMMIO
+ error_exit:
+-	return -EFAULT;
++ 	return -EFAULT;
++#endif
+ }
+
++
++#include <uk/hexdump.h>
+ static int virtio_mmio_add_dev(struct pf_device *pfdev)
+ {
+ 	struct virtio_mmio_device *vm_dev;
+@@ -519,7 +523,10 @@ static int virtio_mmio_add_dev(struct pf_device *pfdev)
+ 	vm_dev->id.vendor = virtio_mem_cread32(vm_dev->base, VIRTIO_MMIO_VENDOR_ID);
+
+ #ifdef VIRTIO_MMIO_LEGACY /* LEGACY DEVICES ONLY! */
+-	virtio_mem_cwrite32(vm_dev->base, VIRTIO_MMIO_GUEST_PAGE_SIZE, __PAGE_SIZE);
++	//virtio_mem_cwrite32(vm_dev->base, VIRTIO_MMIO_GUEST_PAGE_SIZE, __PAGE_SIZE);
++	if (vm_dev->version <= 1) {
++ 		virtio_mem_cwrite32(vm_dev->base, VIRTIO_MMIO_GUEST_PAGE_SIZE, __PAGE_SIZE);
++ 	}
+ #endif
+
+ 	rc = virtio_bus_register_device(&vm_dev->vdev);
+diff --git a/plat/drivers/virtio/virtio_net.c b/plat/drivers/virtio/virtio_net.c
+index bab8849c..2067e767 100644
+--- a/plat/drivers/virtio/virtio_net.c
++++ b/plat/drivers/virtio/virtio_net.c
+@@ -159,6 +159,8 @@ struct virtio_net_device {
+ 	__u8 state;
+ 	/* RX promiscuous mode. */
+ 	__u8 promisc : 1;
++	/* VirtIO modern network standard. */
++ 	__u8 modern;
+ };
+
+ /**
+@@ -206,10 +208,10 @@ static int virtio_netdev_txq_info_get(struct uk_netdev *dev, __u16 queue_id,
+ static int virtio_netdev_rxq_dequeue(struct uk_netdev_rx_queue *rxq,
+ 				     struct uk_netbuf **netbuf);
+ static int virtio_netdev_rxq_enqueue(struct uk_netdev_rx_queue *rxq,
+-				     struct uk_netbuf *netbuf);
++				     struct uk_netbuf *netbuf,__u8 is_modern);
+ static int virtio_netdev_recv_done(struct virtqueue *vq, void *priv);
+ static int virtio_netdev_rx_fillup(struct uk_netdev_rx_queue *rxq,
+-				   __u16 num, int notify);
++				   __u16 num, int notify, __u8 is_modern);
+
+ /**
+  * Static global constants
+@@ -265,7 +267,8 @@ static void virtio_netdev_xmit_free(struct uk_netdev_tx_queue *txq)
+
+ static int virtio_netdev_rx_fillup(struct uk_netdev_rx_queue *rxq,
+ 				   __u16 nb_desc,
+-				   int notify)
++				   int notify,
++				   __u8 is_modern)
+ {
+ 	struct uk_netbuf *netbuf[RX_FILLUP_BATCHLEN];
+ 	int rc = 0;
+@@ -290,7 +293,7 @@ static int virtio_netdev_rx_fillup(struct uk_netdev_rx_queue *rxq,
+ 		for (i = 0; i < cnt; i++) {
+ 			uk_pr_debug("Enqueue netbuf %"PRIu16"/%"PRIu16" (%p) to virtqueue %p...\n",
+ 				    i + 1, cnt, netbuf[i], rxq);
+-			rc = virtio_netdev_rxq_enqueue(rxq, netbuf[i]);
++			rc = virtio_netdev_rxq_enqueue(rxq, netbuf[i], is_modern);
+ 			if (unlikely(rc < 0)) {
+ 				uk_pr_err("Failed to add a buffer to receive virtqueue %p: %d\n",
+ 					  rxq, rc);
+@@ -332,7 +335,7 @@ static int virtio_netdev_xmit(struct uk_netdev *dev,
+ 			      struct uk_netdev_tx_queue *queue,
+ 			      struct uk_netbuf *pkt)
+ {
+-	struct virtio_net_device *vndev __unused;
++	struct virtio_net_device *vndev;
+ 	struct virtio_net_hdr *vhdr;
+ 	struct virtio_net_hdr_padded *padded_hdr;
+ 	int16_t header_sz = sizeof(*padded_hdr);
+@@ -386,7 +389,11 @@ static int virtio_netdev_xmit(struct uk_netdev *dev,
+ 		vhdr->csum_start   = pkt->csum_start - header_sz;
+ 		vhdr->csum_offset  = pkt->csum_offset;
+ 	}
+-	vhdr->gso_type = VIRTIO_NET_HDR_GSO_NONE;
++	if (pkt->flags & UK_NETBUF_F_GSO_TCPV4) {
++ 		vhdr->gso_type     = VIRTIO_NET_HDR_GSO_TCPV4;
++ 		vhdr->hdr_len      = pkt->header_len;
++ 		vhdr->gso_size     = pkt->gso_size;
++ 	}
+
+ 	/**
+ 	 * Prepare the sglist and enqueue the buffer to the virtio-ring.
+@@ -403,7 +410,7 @@ static int virtio_netdev_xmit(struct uk_netdev *dev,
+ 	/* Appending the data to the list. */
+
+ 	uk_hexdumpCd(vhdr, VIRTIO_HDR_LEN);
+-	rc = uk_sglist_append(&queue->sg, vhdr, VIRTIO_HDR_LEN);
++	rc = uk_sglist_append(&queue->sg, vhdr, vndev->modern ? VIRTIO_HDR_LEN : sizeof(struct virtio_net_hdr));
+ 	if (unlikely(rc != 0)) {
+ 		uk_pr_err("Failed to append to the sg list\n");
+ 		goto err_remove_vhdr;
+@@ -417,17 +424,19 @@ static int virtio_netdev_xmit(struct uk_netdev *dev,
+ 	if (pkt->next) {
+ 		rc = uk_sglist_append_netbuf(&queue->sg, pkt->next);
+ 		if (unlikely(rc != 0)) {
+-			uk_pr_err("Failed to append to the sg list\n");
++			uk_pr_err("Failed to append to the sg list: %d\n", rc);
+ 			goto err_remove_vhdr;
+ 		}
+ 	}
+
+-	total_len = uk_sglist_length(&queue->sg);
+-	if (unlikely(total_len > VIRTIO_PKT_BUFFER_LEN)) {
+-		uk_pr_err("Packet size too big: %lu, max:%u\n",
+-			  total_len, VIRTIO_PKT_BUFFER_LEN);
+-		rc = -ENOTSUP;
+-		goto err_remove_vhdr;
++	if (!(pkt->flags & UK_NETBUF_F_GSO_TCPV4)) {
++ 		total_len = uk_sglist_length(&queue->sg);
++ 		if (unlikely(total_len > VIRTIO_PKT_BUFFER_LEN)) {
++ 			uk_pr_err("Packet size too big: %lu, max:%u\n",
++ 				  total_len, VIRTIO_PKT_BUFFER_LEN);
++ 			rc = -ENOTSUP;
++ 			goto err_remove_vhdr;
++ 		}
+ 	}
+
+ 	/**
+@@ -467,7 +476,7 @@ err_exit:
+ }
+
+ static int virtio_netdev_rxq_enqueue(struct uk_netdev_rx_queue *rxq,
+-				     struct uk_netbuf *netbuf)
++				     struct uk_netbuf *netbuf, __u8 is_modern)
+ {
+ 	int rc = 0;
+ 	struct virtio_net_hdr_padded *rxhdr;
+@@ -489,7 +498,7 @@ static int virtio_netdev_rxq_enqueue(struct uk_netdev_rx_queue *rxq,
+ 	/**
+ 	 * Retrieve the buffer header length.
+ 	 */
+-	rc = uk_netbuf_header(netbuf, VIRTIO_HDR_LEN);
++	rc = uk_netbuf_header(netbuf, sizeof(*rxhdr));
+ 	if (unlikely(rc != 1)) {
+ 		uk_pr_err("Failed to allocate space to prepend virtio header\n");
+ 		return -EINVAL;
+@@ -500,7 +509,7 @@ static int virtio_netdev_rxq_enqueue(struct uk_netdev_rx_queue *rxq,
+ 	uk_sglist_reset(sg);
+
+ 	/* Appending the header buffer to the sglist */
+-	uk_sglist_append(sg, rxhdr, VIRTIO_HDR_LEN);
++	uk_sglist_append(sg, rxhdr, is_modern ? VIRTIO_HDR_LEN : sizeof(struct virtio_net_hdr));
+
+ 	/* Appending the data buffer to the sglist */
+ 	uk_sglist_append(sg, buf_start, buf_len);
+@@ -556,7 +565,7 @@ static int virtio_netdev_rxq_dequeue(struct uk_netdev_rx_queue *rxq,
+ 	 */
+ 	buf->len = len + VTNET_RX_HEADER_PAD;
+ 	rc = uk_netbuf_header(buf,
+-			      -VIRTIO_HDR_LEN);
++			      -((uint16_t)sizeof(struct virtio_net_hdr_padded)));
+ 	UK_ASSERT(rc == 1);
+ 	*netbuf = buf;
+
+@@ -567,6 +576,7 @@ static int virtio_netdev_recv(struct uk_netdev *dev __unused,
+ 			      struct uk_netdev_rx_queue *queue,
+ 			      struct uk_netbuf **pkt)
+ {
++	struct virtio_net_device *vndev;
+ 	int status = 0x0;
+ 	int rc = 0;
+
+@@ -576,13 +586,14 @@ static int virtio_netdev_recv(struct uk_netdev *dev __unused,
+ 	/* Queue interrupts have to be off when calling receive */
+ 	UK_ASSERT(!(queue->intr_enabled & VTNET_INTR_EN));
+
++	vndev = to_virtionetdev(dev);
+ 	rc = virtio_netdev_rxq_dequeue(queue, pkt);
+ 	if (unlikely(rc < 0)) {
+ 		uk_pr_err("Failed to dequeue the packet: %d\n", rc);
+ 		goto err_exit;
+ 	}
+ 	status |= (*pkt) ? UK_NETDEV_STATUS_SUCCESS : 0x0;
+-	status |= virtio_netdev_rx_fillup(queue, (queue->nb_desc - rc), 1);
++	status |= virtio_netdev_rx_fillup(queue, (queue->nb_desc - rc), 1, vndev->modern);
+
+ 	/* Enable interrupt only when user had previously enabled it */
+ 	if (queue->intr_enabled & VTNET_INTR_USR_EN_MASK) {
+@@ -607,7 +618,7 @@ static int virtio_netdev_recv(struct uk_netdev *dev __unused,
+ 			 */
+ 			status |= virtio_netdev_rx_fillup(queue,
+ 							  (queue->nb_desc - rc),
+-							  1);
++							  1, vndev->modern);
+
+ 			/* Need to enable the interrupt on the last packet */
+ 			rc = virtqueue_intr_enable(queue->vq);
+@@ -663,7 +674,7 @@ static struct uk_netdev_rx_queue *virtio_netdev_rx_queue_setup(
+ 	rxq->alloc_rxpkts_argp = conf->alloc_rxpkts_argp;
+
+ 	/* Allocate receive buffers for this queue */
+-	virtio_netdev_rx_fillup(rxq, rxq->nb_desc, 0);
++	virtio_netdev_rx_fillup(rxq, rxq->nb_desc, 0, vndev->modern);
+
+ exit:
+ 	return rxq;
+@@ -900,20 +911,18 @@ static int virtio_netdev_feature_negotiate(struct uk_netdev *n)
+
+ 	/**
+ 	 * MTU information (needed)
+-	 *
+-	if (!VIRTIO_FEATURE_HAS(host_features, VIRTIO_NET_F_STATUS)) {
+-		uk_pr_err("%p: Host system does not offer MTU feature\n", n);
+-		rc = -EINVAL;
+-		goto err_negotiate_feature;
++	 */
++	if (VIRTIO_FEATURE_HAS(host_features, VIRTIO_NET_F_STATUS)) {
++ 		VIRTIO_FEATURE_SET(drv_features, VIRTIO_NET_F_STATUS);
+ 	}
+-	VIRTIO_FEATURE_SET(drv_features, VIRTIO_NET_F_STATUS);
+-	*/
+
+ 	/**
+ 	 * Gratuitous ARP
+ 	 * NOTE: We tell that we will do gratuitous ARPs ourselves.
+ 	 */
+-	// VIRTIO_FEATURE_SET(drv_features, VIRTIO_NET_F_GUEST_ANNOUNCE);
++	if (VIRTIO_FEATURE_HAS(host_features, VIRTIO_NET_F_CTRL_VQ)) {
++ 		VIRTIO_FEATURE_SET(drv_features, VIRTIO_NET_F_GUEST_ANNOUNCE);
++ 	}
+
+ 	/**
+ 	 * Partial checksumming
+@@ -928,11 +937,22 @@ static int virtio_netdev_feature_negotiate(struct uk_netdev *n)
+ 		VIRTIO_FEATURE_SET(drv_features, VIRTIO_NET_F_GUEST_CSUM);
+ 	}
+
++	/**
++ 	 * TCP Segmentation Offload
++ 	 * NOTE: This enables sending and receiving of packets marked with
++ 	 *       VIRTIO_NET_HDR_GSO_TCPV4
++ 	 */
++ 	if (VIRTIO_FEATURE_HAS(host_features, VIRTIO_NET_F_GSO))
++ 		VIRTIO_FEATURE_SET(drv_features, VIRTIO_NET_F_GSO);
++ 	if (VIRTIO_FEATURE_HAS(host_features, VIRTIO_NET_F_HOST_TSO4))
++ 		VIRTIO_FEATURE_SET(drv_features, VIRTIO_NET_F_HOST_TSO4);
++
+ 	/**
+ 	 * Announce our enabled driver features back to the backend device
+ 	 */
+ 	if (VIRTIO_FEATURE_HAS(host_features, VIRTIO_F_VERSION_1)) {
+  		 VIRTIO_FEATURE_SET(drv_features, VIRTIO_F_VERSION_1);
++		 vndev->modern = 1;
+ 	}
+
+ 	vndev->vdev->features = drv_features;
+@@ -1117,8 +1137,13 @@ static void virtio_net_info_get(struct uk_netdev *dev,
+ 	dev_info->nb_encap_rx = sizeof(struct virtio_net_hdr_padded);
+ 	dev_info->ioalign = sizeof(void *); /* word size alignment */
+ 	dev_info->features = UK_NETDEV_F_RXQ_INTR
+-		| (VIRTIO_FEATURE_HAS(vndev->vdev->features, VIRTIO_NET_F_CSUM)
+-		   ? UK_NETDEV_F_PARTIAL_CSUM : 0);
++ 		| (VIRTIO_FEATURE_HAS(vndev->vdev->features, VIRTIO_NET_F_CSUM)
++ 		   ? UK_NETDEV_F_PARTIAL_CSUM : 0)
++ 		| ((VIRTIO_FEATURE_HAS(vndev->vdev->features,
++ 				       VIRTIO_NET_F_HOST_TSO4)
++ 		    || VIRTIO_FEATURE_HAS(vndev->vdev->features,
++ 					  VIRTIO_NET_F_GSO))
++ 		   ? UK_NETDEV_F_TSO4 : 0);
+ }
+
+ static int virtio_net_start(struct uk_netdev *n)
+@@ -1197,6 +1222,7 @@ static int virtio_net_add_dev(struct virtio_dev *vdev)
+ 	vndev->max_mtu = UK_ETH_PAYLOAD_MAXLEN;
+ 	vndev->mtu = vndev->max_mtu;
+ 	vndev->promisc = 0;
++	vndev->modern = 0;
+
+ 	/**
+ 	 * TODO:
+diff --git a/plat/drivers/virtio/virtio_ring.c b/plat/drivers/virtio/virtio_ring.c
+index 855ade53..fb58532c 100644
+--- a/plat/drivers/virtio/virtio_ring.c
++++ b/plat/drivers/virtio/virtio_ring.c
+@@ -227,6 +227,9 @@ __u64 virtqueue_feature_negotiate(__u64 feature_set)
+ {
+ 	__u64 feature = (1ULL << VIRTIO_TRANSPORT_F_START) - 1;
+
++	/* Allow version 1 flag */
++ 	feature |= 1ULL << VIRTIO_F_VERSION_1;
++
+ 	/**
+ 	 * Currently out vring driver does not support any ring feature. We will
+ 	 * add support to transport feature in the future.
+diff --git a/plat/kvm/include/kvm-x86/bootparams.h b/plat/kvm/include/kvm-x86/bootparams.h
+index 65674177..88b0eae6 100644
+--- a/plat/kvm/include/kvm-x86/bootparams.h
++++ b/plat/kvm/include/kvm-x86/bootparams.h
+@@ -39,4 +39,4 @@ struct boot_params {
+         __u8 _pad6[816];
+ } __attribute__((packed));
+
+-#endif /* ! BOOTPARAMS_HEADER */
++#endif /* ! BOOTPARAMS_HEADER */
+\ No newline at end of file
+diff --git a/plat/kvm/x86/link64.lds.S b/plat/kvm/x86/link64.lds.S
+index 55f4d746..a15ef906 100644
+--- a/plat/kvm/x86/link64.lds.S
++++ b/plat/kvm/x86/link64.lds.S
+@@ -53,7 +53,7 @@ SECTIONS
+ 	EVENTTAB_SECTION
+
+ 	/* Read-only data */
+-	. = ALIGN(__PAGE_SIZE);
++	/*. = ALIGN(__PAGE_SIZE);*/
+ 	_rodata = .;
+ 	.rodata :
+ 	{
+diff --git a/plat/kvm/x86/setup.c b/plat/kvm/x86/setup.c
+index 4bb12b6f..8c4b32c9 100644
+--- a/plat/kvm/x86/setup.c
++++ b/plat/kvm/x86/setup.c
+@@ -57,11 +57,19 @@ void _libkvmplat_entry(void *arg)
+ 			   (void *) _libkvmplat_cfg.initrd.start);
+ 	uk_pr_info("    heap start: %p\n",
+ 		   (void *) _libkvmplat_cfg.heap.start);
++	/*uk_pr_info("    heap end: %p\n",
++		   (void *) _libkvmplat_cfg.heap.end);
++	uk_pr_info("    heap len: %ld\n",
++		   (void *) _libkvmplat_cfg.heap.len);*/
+ 	if (_libkvmplat_cfg.heap2.len)
+ 		uk_pr_info(" heap start (2): %p\n",
+ 			   (void *) _libkvmplat_cfg.heap2.start);
+ 	uk_pr_info("     stack top: %p\n",
+ 		   (void *) _libkvmplat_cfg.bstack.start);
++	/*uk_pr_info("     stack end: %p\n",
++		   (void *) _libkvmplat_cfg.bstack.end);
++	uk_pr_info("     stack len: %ld\n",
++		   (void *) _libkvmplat_cfg.bstack.len);*/
+
+ #ifdef CONFIG_HAVE_SMP
+ 	acpi_init();

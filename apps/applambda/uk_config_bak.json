@@ -1,0 +1,21 @@
+{
+  "boot-source": {
+    "kernel_image_path": "/home/unikraft/versioning/apps/applambda/build/app-lambda_kvmfc-x86_64",
+    "boot_args": "virtio_mmio.device=4K@0xd0000000:5 -- "
+  },
+  "drives": [],
+  "machine-config": {
+    "vcpu_count": 1,
+    "mem_size_mib": 128,
+    "smt": false,
+    "track_dirty_pages": false
+  },
+  "cpu-config": null,
+  "balloon": null,
+  "network-interfaces": [],
+  "vsock": null,
+  "logger": null,
+  "metrics": null,
+  "mmds-config": null,
+  "entropy": null
+}
